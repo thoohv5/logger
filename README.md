@@ -1,2 +1,8 @@
-# function-template
-this is a function template
+# 日志组件
+
+功能列表
+1. 支持混合输出流，比如控制台，日志文件
+2. 支持日志等级 debug,info,warn,error
+3. 支持结构化输出，比如JSON形式
+4. 支持日志切割，按照日期，时间间隔，文件大小切割
+5. 日志额外的信息，比如打印日志的函数、所在的文件、行号、记录时间
