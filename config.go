@@ -18,7 +18,7 @@ type Config struct {
 	// 日志类别: debug, warn, info，error
 	Level string `toml:"level"`
 	// Out包含file，需要配置
-	File *File `toml:"File"`
+	File *File `toml:"file"`
 }
 
 // File 日志文件类别配置
