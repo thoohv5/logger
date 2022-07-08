@@ -26,7 +26,7 @@ type File struct {
 	// 日志文件目录 项目目录
 	Path string `toml:"path"`
 	// 日志文件默认名称 default.log
-	FileName string `toml:"fileName"`
+	FileName string `toml:"file_name"`
 	// 最大文件容量（单位:M），默认：128
 	MaxSize int `toml:"max_size"`
 	// 最大的备份数量，默认：30
