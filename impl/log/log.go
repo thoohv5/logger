@@ -21,9 +21,9 @@ type entity struct {
 	curLevel logger.Level
 }
 
-func New(config *logger.Config) logger.ILogger {
+func New(config *logger.Config, opts ...logger.Option) logger.ILogger {
 	e := &entity{
-		Base:   base.New(),
+		Base:   base.New(opts...),
 		config: config,
 		data:   logger.InitData(),
 	}
@@ -39,7 +39,7 @@ func (e *entity) base(level logger.Level) *entity {
 	e.curLevel = level
 	return e.
 		append(logger.LevelTag, base.LevelInfo(level)).
-		append(logger.CallerTag, base.GetCallerInfo(3)).
+		append(logger.CallerTag, base.GetCallerInfo(e.GetSkip())).
 		append(logger.TimeTag, time.Now().Format("2006-01-02T15:04:05.000Z0700"))
 }
 

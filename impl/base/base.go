@@ -13,10 +13,19 @@ import (
 )
 
 type Base struct {
+	options logger.Options
 }
 
-func New() *Base {
-	return &Base{}
+func New(opts ...logger.Option) *Base {
+	o := logger.Options{
+		Skip: 3,
+	}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	return &Base{
+		options: o,
+	}
 }
 
 func (b *Base) GetFileWriter(fc *logger.File) io.Writer {
@@ -77,4 +86,8 @@ func GetCallerInfo(skip int) string {
 	// funcName := runtime.FuncForPC(pc).Name()
 	// fileName := path.Base(file) // Base函数返回路径的最后一个元素
 	return fmt.Sprintf("%s:%d", file, lineNo)
+}
+
+func (b *Base) GetSkip() int {
+	return b.options.GetSkip()
 }

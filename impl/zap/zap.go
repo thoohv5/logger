@@ -21,9 +21,10 @@ const (
 	OutSep = ","
 )
 
-func New(config *logger.Config) logger.ILogger {
+func New(config *logger.Config, opts ...logger.Option) logger.ILogger {
 
 	e := &entity{
+		Base:   base.New(opts...),
 		config: config,
 	}
 	caller := zap.AddCaller()
@@ -32,7 +33,7 @@ func New(config *logger.Config) logger.ILogger {
 	// filed := zap.Fields(zap.String("serviceName", "serviceName"))
 	// 构造日志
 	// log := zap.New(core, caller, zap.Development(), filed)
-	z := zap.New(e.getWriter(), caller, zap.Development())
+	z := zap.New(e.getWriter(), caller, zap.Development(), zap.AddCallerSkip(e.GetSkip()))
 	e.zap = z
 	return e
 }
