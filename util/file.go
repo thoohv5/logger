@@ -50,5 +50,10 @@ func GetCurrentAbPathByCaller(skip int) string {
 }
 
 func AbPath(file string) string {
+
+	if strings.HasPrefix(file, "/") {
+		return file
+	}
+
 	return fmt.Sprintf("%s/%s", GetCurrentAbPathByCaller(2), file)
 }
