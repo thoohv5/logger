@@ -1,10 +1,13 @@
 package log
 
 import (
+	"bytes"
+	"fmt"
 	"io"
-	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/thoohv5/logger"
@@ -13,73 +16,166 @@ import (
 
 type entity struct {
 	*base.Base
-	data   logger.IData
-	config *logger.Config
 
-	logger *log.Logger
+	w io.Writer
 
-	curLevel logger.Level
+	ch     chan logger.IData
+	msgBuf []logger.IData
+	cf     *logger.Config
+	buf    *bytes.Buffer
 }
+
+const (
+	MsgChanLen        = 10000
+	MaxMsgBufLen      = 100
+	FlushTimeInterval = time.Second
+)
 
 func New(config *logger.Config, opts ...logger.Option) logger.ILogger {
+
 	e := &entity{
 		Base:   base.New(opts...),
-		config: config,
-		data:   logger.InitData(),
+		cf:     config,
+		ch:     make(chan logger.IData, MsgChanLen),
+		msgBuf: make([]logger.IData, 0, MaxMsgBufLen),
+		buf:    &bytes.Buffer{},
 	}
 
-	clog := log.New(e.getWriter(), "", log.Lmsgprefix)
+	e.w = e.getWriter()
 
-	e.logger = clog
-
-	return e
-}
-
-func (e *entity) base(level logger.Level) *entity {
-	e.curLevel = level
-	return e.
-		append(logger.LevelTag, base.LevelInfo(level)).
-		append(logger.CallerTag, base.GetCallerInfo(e.GetSkip())).
-		append(logger.TimeTag, time.Now().Format("2006-01-02T15:04:05.000Z0700"))
-}
-
-func (e *entity) Debug(msg string, values ...interface{}) {
-	e.base(logger.Debug).append(logger.MsgTag, msg).append(logger.ParamTag, values...).output()
-}
-
-func (e *entity) Info(msg string, values ...interface{}) {
-	e.base(logger.Info).append(logger.MsgTag, msg).append(logger.ParamTag, values...).output()
-}
-
-func (e *entity) Warn(msg string, values ...interface{}) {
-	e.base(logger.Warn).append(logger.MsgTag, msg).append(logger.ParamTag, values...).output()
-}
-
-func (e *entity) Error(msg string, values ...interface{}) {
-	e.base(logger.Error).append(logger.MsgTag, msg).append(logger.ParamTag, values...).output()
-}
-
-func (e *entity) display() string {
-	return func() string {
-		s := e.data.Marshal()
-		e.data = logger.InitData()
-		return s
+	go func() {
+		defer func() {
+			if rev := recover(); rev != nil {
+				fmt.Printf("日志写盘异常%v", rev)
+			}
+		}()
+		e.flush()
 	}()
+
+	return e
 }
 
-func (e *entity) output() {
-	if e.curLevel > base.Level(e.config.GetConfig().Level) {
-		_ = e.logger.Output(2, e.display())
+func (e *entity) base(level logger.Level) logger.IData {
+	return logger.InitData().
+		SetLevel(level).
+		Common(logger.LevelTag, base.LevelInfo(level)).
+		Common(logger.CallerTag, base.GetCallerInfo(e.GetSkip())).
+		Common(logger.TimeTag, time.Now().Format("2006-01-02T15:04:05.000Z0700"))
+}
+
+func (e *entity) Debugf(msg string, values ...interface{}) {
+	e.output(e.base(logger.Debug).Common(logger.MsgTag, fmt.Sprintf(msg, values...)))
+}
+
+func (e *entity) Infof(msg string, values ...interface{}) {
+	e.output(e.base(logger.Info).Common(logger.MsgTag, fmt.Sprintf(msg, values...)))
+}
+
+func (e *entity) Warnf(msg string, values ...interface{}) {
+	e.output(e.base(logger.Warn).Common(logger.MsgTag, fmt.Sprintf(msg, values...)))
+}
+
+func (e *entity) Errorf(msg string, values ...interface{}) {
+	e.output(e.base(logger.Error).Common(logger.MsgTag, fmt.Sprintf(msg, values...)))
+}
+
+func (e *entity) Debug(msg string, values ...logger.Field) {
+	fields := logger.NewFields()
+	for _, value := range values {
+		value(fields)
+	}
+	e.output(e.base(logger.Debug).Common(logger.MsgTag, msg).Map(fields.Data()))
+}
+
+func (e *entity) Info(msg string, values ...logger.Field) {
+	fields := logger.NewFields()
+	for _, value := range values {
+		value(fields)
+	}
+	e.output(e.base(logger.Info).Common(logger.MsgTag, msg).Map(fields.Data()))
+}
+
+func (e *entity) Warn(msg string, values ...logger.Field) {
+	fields := logger.NewFields()
+	for _, value := range values {
+		value(fields)
+	}
+	e.output(e.base(logger.Warn).Common(logger.MsgTag, msg).Map(fields.Data()))
+}
+
+func (e *entity) Error(msg string, values ...logger.Field) {
+	fields := logger.NewFields()
+	for _, value := range values {
+		value(fields)
+	}
+	e.output(e.base(logger.Error).Common(logger.MsgTag, msg).Map(fields.Data()))
+}
+
+// 监听刷盘情况
+func (e *entity) flush() {
+	// 监听信号
+	c := make(chan os.Signal)
+	// 监听信号
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+
+	// 注册定时器
+	ticker := time.NewTicker(FlushTimeInterval)
+
+	for {
+		select {
+		case mes := <-e.ch:
+			e.msgBuf = append(e.msgBuf, mes)
+			if len(e.msgBuf) == MaxMsgBufLen {
+				if err := e.brush(); err != nil {
+					fmt.Printf("缓冲区上限刷盘，错误:%v\n", err)
+				}
+			}
+		case <-ticker.C:
+			if err := e.brush(); err != nil {
+				fmt.Printf("缓冲区定时刷盘，错误:%v\n", err)
+			}
+		case <-c:
+			if err := e.brush(); err != nil {
+				fmt.Printf("退出刷盘，错误:%v\n", err)
+			}
+		}
 	}
 }
 
-func (e *entity) append(key string, values ...interface{}) *entity {
-	e.data = e.data.Append(key, values...)
-	return e
+// 批量将buf内容刷新到日志文件
+func (e *entity) brush() (err error) {
+	e.buf.Reset()
+	for _, mes := range e.msgBuf {
+		e.buf.Write(mes.Marshal())
+		e.buf.WriteByte('\n')
+	}
+
+	// 重置
+	e.msgBuf = make([]logger.IData, 0, MaxMsgBufLen)
+
+	// 检查
+	if e.buf.Len() == 0 {
+		return
+	}
+
+	// 写入日志文件
+	_, err = io.Copy(e.w, e.buf)
+	if err != nil {
+		fmt.Println("写入日志文件失败,", err)
+		return
+	}
+
+	return
+}
+
+func (e *entity) output(data logger.IData) {
+	if data.GetLevel() > base.Level(e.cf.GetConfig().Level) {
+		e.ch <- data
+	}
 }
 
 func (e *entity) getWriter() io.Writer {
-	output := strings.Split(e.config.GetConfig().Out, ",")
+	output := strings.Split(e.cf.GetConfig().Out, ",")
 	if len(output) == 0 {
 		output = append(output, "std")
 	}
@@ -87,7 +183,7 @@ func (e *entity) getWriter() io.Writer {
 	otw := make([]io.Writer, 0)
 	for _, ot := range output {
 
-		fc := e.config.GetFileConfig()
+		fc := e.cf.GetFileConfig()
 
 		var w io.Writer
 		switch ot {

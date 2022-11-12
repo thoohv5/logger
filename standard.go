@@ -10,8 +10,13 @@ const (
 )
 
 type ILogger interface {
-	Debug(msg string, values ...interface{})
-	Info(msg string, values ...interface{})
-	Warn(msg string, values ...interface{})
-	Error(msg string, values ...interface{})
+	Debugf(msg string, values ...interface{})
+	Infof(msg string, values ...interface{})
+	Warnf(msg string, values ...interface{})
+	Errorf(msg string, values ...interface{})
+
+	Debug(msg string, values ...Field)
+	Info(msg string, values ...Field)
+	Warn(msg string, values ...Field)
+	Error(msg string, values ...Field)
 }
