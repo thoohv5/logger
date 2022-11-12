@@ -1,6 +1,9 @@
 package logger
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"sync"
+)
 
 type (
 	IData interface {
@@ -8,26 +11,29 @@ type (
 		Marshal() string
 	}
 	Data struct {
-		data map[string]interface{}
+		data sync.Map
 	}
 )
 
 func InitData() *Data {
-	return &Data{
-		data: make(map[string]interface{}),
-	}
+	return &Data{}
 }
 
 func (ld *Data) Append(key string, values ...interface{}) IData {
 	if len(values) == 1 {
-		ld.data[key] = values[0]
+		ld.data.Store(key, values[0])
 	} else {
-		ld.data[key] = values
+		ld.data.Store(key, values)
 	}
 	return ld
 }
 
 func (ld *Data) Marshal() string {
-	bs, _ := json.Marshal(ld.data)
+	m := make(map[string]interface{})
+	ld.data.Range(func(key, value interface{}) bool {
+		m[key.(string)] = value
+		return true
+	})
+	bs, _ := json.Marshal(m)
 	return string(bs)
 }
